@@ -1,10 +1,11 @@
-name: Eval Harness
+name: CI/CD
 
 on:
   push:
   pull_request:
 
 jobs:
+  # CI: runs on every push and pull request.
   eval:
     runs-on: ubuntu-latest
     steps:
@@ -21,3 +22,31 @@ jobs:
       # Exits non-zero if any of the 12 checks fail, which fails the build.
       - name: Run eval harness
         run: python tests/eval_harness.py
+
+  # CD: only on main, and only after the eval passes.
+  deploy:
+    needs: eval
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
